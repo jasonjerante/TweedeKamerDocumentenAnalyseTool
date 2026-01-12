@@ -1,4 +1,4 @@
-# De Tweede Kamer Analyse Tool
+# De Tweede Kamer Documenten Analyse Tool
 Deze applicatie biedt een interactieve analyse- en zoekomgeving voor openbare documenten van de Tweede Kamer der Staten-Generaal.
 De tool is bedoeld om grote hoeveelheden Kamerstukken overzichtelijk te maken en eenvoudige analyses mogelijk te maken op basis van inhoud, tijd en documenttype.
 De applicatie draait op Streamlit Community Cloud en gebruikt uitsluitend openbare data.
