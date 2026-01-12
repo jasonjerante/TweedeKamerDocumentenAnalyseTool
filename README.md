@@ -31,7 +31,7 @@ De data wordt opgeslagen in Parquet-formaat voor snelle laadtijden en efficiënt
 Deze applicatie gebruikt uitsluitend openbare overheidsdata.
 De analyses en visualisaties zijn bedoeld ter ondersteuning van inzicht en onderzoek.
 Interpretaties of conclusies uit deze tool vertegenwoordigen geen officiële standpunten van de Tweede Kamer of de Rijksoverheid.
-De ontwikkelaar is niet verantwoordelijk voor de inhoud van de brondata.
+De ontwikkelaar en auteur is niet verantwoordelijk voor de inhoud van de brondata.
 
 # Licentie
 Dit project is vrij te gebruiken voor educatieve, journalistieke en onderzoeksdoeleinden. Mocht je dit project overnemen, graag de auteur erbij vernoemen.
