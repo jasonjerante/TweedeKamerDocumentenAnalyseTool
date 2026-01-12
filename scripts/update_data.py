@@ -131,3 +131,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# originele code zag er niet uit dus gebruik gemaakt van Claude om de code netter te maken
