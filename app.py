@@ -15,7 +15,7 @@ BASE_URL = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Document({})/re
 
 st.set_page_config(layout="wide")
 st.title("De Tweede Kamer Analyse Tool")
-st.write("Deze tool maakt openbare Tweede Kamer-stukken overzichtelijk en doorzoekbaar.")
+st.write("Deze tool maakt openbare Tweede Kamer-stukken overzichtelijk en doorzoekbaar. Gebouwd door Jason Stuve. Mochten er vragen of opmerkingen zijn, neem gerust contact op via Linkedin: https://www.linkedin.com/in/jkpstuve/")
 
 
 def load_meta() -> dict:
