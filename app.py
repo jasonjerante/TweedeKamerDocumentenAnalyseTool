@@ -1,4 +1,4 @@
-# app.py
+# ---- imports ----
 import json
 import os
 
@@ -100,7 +100,7 @@ with st.expander("Dataset preview", expanded=False):
 st.divider()
 st.subheader("Zoeken")
 
-# Gebruik een form zodat de app niet bij elke toetsaanslag opnieuw gaat zoeken
+# Gebruik een form zodat de app niet bij elke toetsaanslag opnieuw gaat zoeken. Merkte dat dit ervoor zorgt dat het veel sneller gaat werken.
 with st.form("search_form", clear_on_submit=False):
     search_mode = st.radio("Kies de zoekmodus:", ("Een item", "Meerdere items"), horizontal=True)
 
@@ -126,7 +126,7 @@ with st.form("search_form", clear_on_submit=False):
         if t2.strip():
             terms.append(t2.strip())
 
-    # UX: extra instellingen
+    # UX: extra instellingen voor gebruikers (geen idee of dit nu nodig is maar wellicht handig om alvast erin gebouwd te hebben voor latere uitbreidingen)
     st.caption("Tip: gebruik meerdere zoektermen met AND om specifieker te zoeken.")
     chunk_size = st.slider("Zoeksnelheid (chunk size)", min_value=2000, max_value=20000, value=5000, step=1000)
 
@@ -217,3 +217,5 @@ for _, row in results.iterrows():
         link = BASE_URL.format(doc_id)
         st.markdown(f"- [{onderwerp}]({link})")
         shown += 1
+
+# klaargemaakt voor gebruik door Jason Stuve op maandag 12 januari 2026
