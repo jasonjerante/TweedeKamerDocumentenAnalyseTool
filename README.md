@@ -23,7 +23,7 @@ De Streamlit-app zelf doet géén API-calls bij het opstarten
 # Deze applicatie maakt gebruik van de Tweede Kamer Open Data API: 
 https://gegevensmagazijn.tweedekamer.nl/
 
-Datumselectie vanaf eind 2019
+Datumselectie vanaf eind november 2019
 
 De data wordt opgeslagen in Parquet-formaat voor snelle laadtijden en efficiënte verwerking.
 
@@ -34,9 +34,10 @@ Interpretaties of conclusies uit deze tool vertegenwoordigen geen officiële sta
 De ontwikkelaar is niet verantwoordelijk voor de inhoud van de brondata.
 
 # Licentie
-Dit project is vrij te gebruiken voor educatieve, journalistieke en onderzoeksdoeleinden.
-Voor commercieel gebruik: neem contact op met mij aub (antwoord is toch nee).
+Dit project is vrij te gebruiken voor educatieve, journalistieke en onderzoeksdoeleinden. Mocht je dit project overnemen, graag de auteur erbij vernoemen.
+Voor commercieel gebruik: neem contact op met mij.
 
 # Contact
 Voor vragen, feedback of suggesties:
+Auteur: Jason Stuve
 LinkedIn: https://www.linkedin.com/in/jkpstuve/
