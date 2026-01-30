@@ -89,13 +89,7 @@ def apply_facet_filters(df: pd.DataFrame, spec: FilterSpec) -> pd.DataFrame:
 
 
 def render_filters_ui(df: pd.DataFrame) -> FilterSpec:
-    """
-    Render zoekfilters en retourneer een FilterSpec (dataclass)
-    """
-
-    # --------
-    # Include terms
-    # --------
+    # Include
     include_raw = st.text_area(
         "Zoektermen (include)",
         placeholder="energie, kernenergie",
@@ -103,9 +97,7 @@ def render_filters_ui(df: pd.DataFrame) -> FilterSpec:
     )
     include_terms = _parse_terms(include_raw)
 
-    # --------
     # Logica (alleen bij ≥ 2 termen)
-    # --------
     if len(include_terms) >= 2:
         include_logic = st.radio(
             "Zoeklogica",
@@ -116,9 +108,7 @@ def render_filters_ui(df: pd.DataFrame) -> FilterSpec:
     else:
         include_logic = "AND"
 
-    # --------
-    # NOT-termen (altijd direct onder logica)
-    # --------
+    # NOT direct onder logica
     exclude_raw = st.text_area(
         "NOT-termen (exclude)",
         placeholder="concept",
@@ -128,9 +118,7 @@ def render_filters_ui(df: pd.DataFrame) -> FilterSpec:
 
     st.divider()
 
-    # --------
-    # Facet filters
-    # --------
+    # Facets (altijd initialiseren!)
     facet_includes: Dict[str, List[str]] = {}
     facet_excludes: Dict[str, List[str]] = {}
 
@@ -154,8 +142,7 @@ def render_filters_ui(df: pd.DataFrame) -> FilterSpec:
         facet_excludes=facet_excludes,
     )
 
-    # (optioneel) query summary tonen:
+    # optioneel: laat samenvatting zien
     st.info(_query_summary(spec))
 
     return spec
-
