@@ -88,80 +88,77 @@ def apply_facet_filters(df: pd.DataFrame, spec: FilterSpec) -> pd.DataFrame:
     return out
 
 
-def render_filters_ui(df: pd.DataFrame) -> FilterSpec:
+def render_filters_ui(df: pd.DataFrame):
     """
-    Render een UI voor:
-    - Include terms + AND/OR
-    - Exclude terms (NOT)
-    - Facet include + NOT (nu: Soort + optionele extra’s als ze bestaan)
+    Render zoekfilters en retourneer een spec object
     """
-    st.markdown("### Filters (AND / OR / NOT)")
 
-    col1, col2 = st.columns([2, 1])
+    # --------
+    # Include terms
+    # --------
+    include_raw = st.text_area(
+        "Zoektermen (include)",
+        placeholder="energie, kernenergie",
+        help="Meerdere termen scheiden met een komma",
+    )
 
-    with col1:
-        raw_include = st.text_area(
-            "Zoektermen (include)",
-            placeholder="Voorbeelden:\nenergie\nkernenergie, gas\nasiel",
-            help="Je kunt meerdere termen invoeren, gescheiden door komma’s of nieuwe regels.",
-            height=110,
+    include_terms = [t.strip() for t in include_raw.split(",") if t.strip()]
+
+    # --------
+    # Logica (alleen bij ≥ 2 termen)
+    # --------
+    if len(include_terms) >= 2:
+        include_logic = st.radio(
+            "Zoeklogica",
+            ["AND", "OR"],
+            horizontal=True,
+            help="AND = alle termen moeten voorkomen · OR = minstens één term",
         )
-        include_terms = _parse_terms(raw_include)
+    else:
+        include_logic = "AND"  # default, maar verborgen voor gebruiker
 
-    with col2:
-        include_logic = "OR"
-        if len(include_terms) >= 2:
-            include_logic = st.radio("Logica tussen include-termen", ("AND", "OR"), horizontal=False)
-        else:
-            st.caption("Logica verschijnt bij ≥ 2 termen.")
+    # --------
+    # NOT-termen (altijd direct onder logica)
+    # --------
+    exclude_raw = st.text_area(
+        "NOT-termen (exclude)",
+        placeholder="concept",
+        help="Documenten die deze termen bevatten worden uitgesloten",
+    )
 
-        raw_exclude = st.text_area(
-            "NOT-termen (exclude)",
-            placeholder="Bijv.\nconcept\nbijlage",
-            help="Alles wat één van deze woorden bevat wordt uitgesloten.",
-            height=110,
-        )
-        exclude_terms = _parse_terms(raw_exclude)
+    exclude_terms = [t.strip() for t in exclude_raw.split(",") if t.strip()]
 
     st.divider()
 
-    facet_includes: Dict[str, List[str]] = {}
-    facet_excludes: Dict[str, List[str]] = {}
+    # --------
+    # Facet filters
+    # --------
+    facet_includes = {}
+    facet_excludes = {}
 
-    # Facet filters (uitbreidbaar): pak kolommen die in jouw dataset bestaan
-    facet_candidates = ["Soort", "Vergaderjaar", "DocumentSoort", "Organisatie", "Kamer"]  # safe proberen
-    available_facets = [c for c in facet_candidates if c in df.columns]
+    if "Soort" in df.columns:
+        facet_includes["Soort"] = st.multiselect(
+            "Filter op soort",
+            sorted(df["Soort"].dropna().unique()),
+        )
 
-    if available_facets:
-        st.markdown("### Facet filters (optioneel)")
-        for col in available_facets:
-            values = (
-                df[col]
-                .dropna()
-                .astype(str)
-                .value_counts()
-                .index.tolist()
-            )
+    if "Vergaderjaar" in df.columns:
+        facet_includes["Vergaderjaar"] = st.multiselect(
+            "Filter op vergaderjaar",
+            sorted(df["Vergaderjaar"].dropna().unique()),
+        )
 
-            with st.expander(f"Filter op: {col}", expanded=False):
-                cA, cB = st.columns(2)
-                with cA:
-                    inc = st.multiselect(f"{col} (include)", options=values, default=[])
-                with cB:
-                    exc = st.multiselect(f"{col} (NOT)", options=values, default=[])
-
-                facet_includes[col] = inc
-                facet_excludes[col] = exc
-    else:
-        st.caption("Geen standaard facet-kolommen gevonden (zoals 'Soort').")
-
-    spec = FilterSpec(
+    # --------
+    # Spec object (zoals je al gebruikte)
+    # --------
+    return SimpleNamespace(
         include_terms=include_terms,
         include_logic=include_logic,
         exclude_terms=exclude_terms,
         facet_includes=facet_includes,
         facet_excludes=facet_excludes,
     )
+
 
     st.info(_query_summary(spec))
     return spec
