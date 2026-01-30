@@ -88,9 +88,9 @@ def apply_facet_filters(df: pd.DataFrame, spec: FilterSpec) -> pd.DataFrame:
     return out
 
 
-def render_filters_ui(df: pd.DataFrame):
+def render_filters_ui(df: pd.DataFrame) -> FilterSpec:
     """
-    Render zoekfilters en retourneer een spec object
+    Render zoekfilters en retourneer een FilterSpec (dataclass)
     """
 
     # --------
@@ -99,10 +99,9 @@ def render_filters_ui(df: pd.DataFrame):
     include_raw = st.text_area(
         "Zoektermen (include)",
         placeholder="energie, kernenergie",
-        help="Meerdere termen scheiden met een komma",
+        help="Meerdere termen scheiden met een komma of nieuwe regel",
     )
-
-    include_terms = [t.strip() for t in include_raw.split(",") if t.strip()]
+    include_terms = _parse_terms(include_raw)
 
     # --------
     # Logica (alleen bij ≥ 2 termen)
@@ -115,7 +114,7 @@ def render_filters_ui(df: pd.DataFrame):
             help="AND = alle termen moeten voorkomen · OR = minstens één term",
         )
     else:
-        include_logic = "AND"  # default, maar verborgen voor gebruiker
+        include_logic = "AND"
 
     # --------
     # NOT-termen (altijd direct onder logica)
@@ -123,35 +122,31 @@ def render_filters_ui(df: pd.DataFrame):
     exclude_raw = st.text_area(
         "NOT-termen (exclude)",
         placeholder="concept",
-        help="Documenten die deze termen bevatten worden uitgesloten",
+        help="Meerdere termen scheiden met een komma of nieuwe regel",
     )
-
-    exclude_terms = [t.strip() for t in exclude_raw.split(",") if t.strip()]
+    exclude_terms = _parse_terms(exclude_raw)
 
     st.divider()
 
     # --------
     # Facet filters
     # --------
-    facet_includes = {}
-    facet_excludes = {}
+    facet_includes: Dict[str, List[str]] = {}
+    facet_excludes: Dict[str, List[str]] = {}
 
     if "Soort" in df.columns:
         facet_includes["Soort"] = st.multiselect(
             "Filter op soort",
-            sorted(df["Soort"].dropna().unique()),
+            options=sorted(df["Soort"].dropna().unique()),
         )
 
     if "Vergaderjaar" in df.columns:
         facet_includes["Vergaderjaar"] = st.multiselect(
             "Filter op vergaderjaar",
-            sorted(df["Vergaderjaar"].dropna().unique()),
+            options=sorted(df["Vergaderjaar"].dropna().unique()),
         )
 
-    # --------
-    # Spec object (zoals je al gebruikte)
-    # --------
-    return SimpleNamespace(
+    spec = FilterSpec(
         include_terms=include_terms,
         include_logic=include_logic,
         exclude_terms=exclude_terms,
@@ -159,6 +154,8 @@ def render_filters_ui(df: pd.DataFrame):
         facet_excludes=facet_excludes,
     )
 
-
+    # (optioneel) query summary tonen:
     st.info(_query_summary(spec))
+
     return spec
+
