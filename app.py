@@ -10,8 +10,10 @@ import plotly.express as px
 import streamlit as st
 from sklearn.linear_model import LinearRegression
 
-# NEW: UI + download helpers (from /functions)
+# Functies ophalen van /functions
 from functions.ui_results_downloads import render_results_with_downloads
+from functions.ui_filters import render_filters_ui, apply_facet_filters, FilterSpec
+
 
 DOCS_PATH = "data/documents.parquet"
 META_PATH = "data/metadata.json"
