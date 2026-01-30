@@ -2,6 +2,7 @@
 # ---- imports ----
 import json
 import os
+import time
 from typing import Any, Dict, List
 
 import numpy as np
@@ -14,7 +15,6 @@ from sklearn.linear_model import LinearRegression
 from functions.ui_filters import render_filters_ui, apply_facet_filters
 from functions.ui_topics import compute_topics, render_topic_cards
 from functions.ui_master_detail import render_master_detail
-
 
 DOCS_PATH = "data/documents.parquet"
 META_PATH = "data/metadata.json"
@@ -30,6 +30,9 @@ st.write(
 )
 
 
+# -----------------------------
+# Helpers
+# -----------------------------
 def load_meta() -> dict:
     if os.path.exists(META_PATH):
         with open(META_PATH, "r", encoding="utf-8") as f:
@@ -113,7 +116,7 @@ def perform_search_with_progress(
 
 def results_df_to_docs(results: pd.DataFrame) -> List[Dict[str, Any]]:
     """
-    Zet jouw results DataFrame om naar list[dict] met keys die de download UI verwacht.
+    Zet jouw results DataFrame om naar list[dict] met keys die de Master–Detail UI verwacht.
     Verwachte keys in UI:
       dossier_id, doc_id, title, date, doctype, download_url, file_ext
     """
@@ -163,7 +166,13 @@ def results_df_to_docs(results: pd.DataFrame) -> List[Dict[str, Any]]:
     return docs
 
 
-# ---- Load dataset ----
+def has_any_filters(spec) -> bool:
+    return bool(spec.include_terms) or any(spec.facet_includes.values()) or any(spec.facet_excludes.values())
+
+
+# -----------------------------
+# Load dataset
+# -----------------------------
 meta = load_meta()
 df = load_data()
 
@@ -177,29 +186,59 @@ st.caption(f"Laatst bijgewerkt (UTC): {meta.get('updated_utc')} | Aantal rijen: 
 with st.expander("Dataset preview", expanded=False):
     st.dataframe(df.head(200), use_container_width=True)
 
-st.divider()
-st.subheader("Zoeken")
 
-# Gebruik een form zodat de app niet bij elke toetsaanslag opnieuw gaat zoeken.
-with st.form("search_form", clear_on_submit=False):
-    spec = render_filters_ui(df)
+# -----------------------------
+# Sidebar: filters + search
+# -----------------------------
+with st.sidebar:
+    st.header("Zoeken & Filters")
 
-    st.caption("Tip: gebruik AND om specifieker te zoeken. NOT helpt om ruis weg te halen.")
-    chunk_size = st.slider("Zoeksnelheid (chunk size)", min_value=2000, max_value=20000, value=5000, step=1000)
+    with st.form("search_form", clear_on_submit=False):
+        spec = render_filters_ui(df)
 
-    submitted = st.form_submit_button("Zoeken")
+        st.caption("Tip: AND = specifieker, OR = breder, NOT = ruis eruit.")
+        chunk_size = st.slider(
+            "Zoeksnelheid (chunk size)",
+            min_value=2000,
+            max_value=20000,
+            value=5000,
+            step=1000,
+        )
 
+        submitted = st.form_submit_button("Zoeken", use_container_width=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Reset topic", use_container_width=True):
+            st.session_state["topic_filter"] = None
+            st.rerun()
+    with c2:
+        if st.button("Reset alles", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
+
+    st.divider()
+    st.caption("💡 Deelbaar maken? Volgende stap is query params in URL.")
+
+
+# -----------------------------
+# Main: if no search submitted
+# -----------------------------
 if not submitted:
-    st.info("Vul één of meerdere zoektermen in en klik op **Zoeken**.")
+    st.info("Stel je filters links in en klik op **Zoeken**.")
     st.stop()
 
-if not spec.include_terms and not any(spec.facet_includes.values()) and not any(spec.facet_excludes.values()):
+if not has_any_filters(spec):
     st.warning("Je hebt nog geen zoekterm of filters ingevuld.")
     st.stop()
 
-# ---- Execute search with feedback ----
+
+# -----------------------------
+# Execute search
+# -----------------------------
+t0 = time.time()
 with st.spinner("Bezig met zoeken… even geduld"):
-    # 1) Eerst facet filters toepassen (sneller zoeken)
+    # 1) facet filters
     df_prefiltered = apply_facet_filters(df, spec)
 
     st.caption(
@@ -207,7 +246,7 @@ with st.spinner("Bezig met zoeken… even geduld"):
         f"(na facet filters; totaal was {len(df):,})."
     )
 
-    # 2) Daarna tekst search met AND/OR/NOT
+    # 2) text search
     results = perform_search_with_progress(
         df_prefiltered,
         include_terms=spec.include_terms,
@@ -216,83 +255,91 @@ with st.spinner("Bezig met zoeken… even geduld"):
         chunk_size=int(chunk_size),
     )
 
-st.success(f"Klaar! {len(results):,} resultaten gevonden.")
+dt = time.time() - t0
+st.success(f"Klaar! {len(results):,} resultaten gevonden in {dt:.1f}s.")
 
 if len(results) == 0:
-    st.info("Geen resultaten. Probeer een andere term, of gebruik OR i.p.v. AND.")
+    st.warning("Geen resultaten gevonden.")
+    st.markdown(
+        """
+**Suggesties:**
+- Gebruik **OR** in plaats van **AND**
+- Verwijder één of meer **NOT-termen**
+- Probeer een **algemener** zoekwoord
+"""
+    )
     st.stop()
 
-# ---- Topics (clustering) ----
+
+# -----------------------------
+# Topics (clustering)
+# -----------------------------
 st.divider()
+st.subheader("Topics (clustering)")
+st.caption("Klik op een topic om de resultaten te filteren.")
 
-# Bereken topics op basis van de huidige zoekresultaten
 results_with_topics, topics = compute_topics(results)
-
-# Render cards en lees selectie
 selected_topic_id = render_topic_cards(topics)
 
-# Filter resultaten als er een topic gekozen is
 if selected_topic_id is not None:
     results = results_with_topics[results_with_topics["topic_id"] == selected_topic_id].copy()
-    st.success(f"Topic-filter actief: {len(results):,} documenten in dit topic.")
+    st.info(f"Topic-filter actief: **{len(results):,}** documenten.")
 else:
-    # geen filter -> gebruik originele results
     results = results_with_topics
 
 
-# ---- UX Upgrade: Master–Detail resultaten ----
+# -----------------------------
+# Results: Master–Detail
+# -----------------------------
 st.divider()
 docs = results_df_to_docs(results)
+render_master_detail(docs, title="Resultaten")
 
-render_master_detail(
-    docs,
-    title="Search Results (Master–Detail)",
-)
 
-# ---- Optional: dataset tabel nog steeds beschikbaar voor debug ----
+# -----------------------------
+# Debug dataframe
+# -----------------------------
 with st.expander("Ruwe resultaten (DataFrame)", expanded=False):
     st.dataframe(results, use_container_width=True)
 
-with st.expander("Downloadlijst per dossier (oude view)", expanded=False):
-    render_results_with_downloads(docs)
 
-
-# ---- Analytics ----
+# -----------------------------
+# Analytics
+# -----------------------------
 st.divider()
-st.subheader("Time Trend per Month")
+st.subheader("Analyse")
 
 tmp = results.copy()
-if "DatumRegistratie" not in tmp.columns:
-    st.warning("Kolom 'DatumRegistratie' is niet aanwezig in de dataset, trendgrafiek kan niet worden gemaakt.")
-    st.stop()
-
-tmp["DatumRegistratie"] = pd.to_datetime(tmp["DatumRegistratie"], errors="coerce", utc=True)
-tmp = tmp.dropna(subset=["DatumRegistratie"])
+if "DatumRegistratie" in tmp.columns:
+    tmp["DatumRegistratie"] = pd.to_datetime(tmp["DatumRegistratie"], errors="coerce", utc=True)
+    tmp = tmp.dropna(subset=["DatumRegistratie"])
+else:
+    tmp = pd.DataFrame()
 
 if tmp.empty:
-    st.warning("Geen geldige DatumRegistratie-waarden gevonden voor deze selectie.")
-    st.stop()
+    st.info("Geen (bruikbare) DatumRegistratie-waarden gevonden voor trendanalyse.")
+else:
+    st.markdown("#### Time Trend per Month")
+    tmp["Month"] = tmp["DatumRegistratie"].dt.to_period("M").dt.to_timestamp()
+    trend_data = tmp.groupby("Month").size().reset_index(name="Count").sort_values("Month")
 
-tmp["Month"] = tmp["DatumRegistratie"].dt.to_period("M").dt.to_timestamp()
-trend_data = tmp.groupby("Month").size().reset_index(name="Count").sort_values("Month")
+    fig = px.line(trend_data, x="Month", y="Count", title="Aantal documenten per maand")
+    st.plotly_chart(fig, use_container_width=True)
 
-fig = px.line(trend_data, x="Month", y="Count", title="Aantal documenten per maand")
-st.plotly_chart(fig, use_container_width=True)
+    # Lineaire regressie trendline
+    if len(trend_data) >= 2:
+        X = np.arange(len(trend_data)).reshape(-1, 1)
+        y = trend_data["Count"].values
+        model = LinearRegression().fit(X, y)
+        trend_line = model.predict(X)
 
-# Lineaire regressie trendline
-if len(trend_data) >= 2:
-    X = np.arange(len(trend_data)).reshape(-1, 1)
-    y = trend_data["Count"].values
-    model = LinearRegression().fit(X, y)
-    trend_line = model.predict(X)
+        trend_data["Trend"] = trend_line
+        fig2 = px.line(trend_data, x="Month", y=["Count", "Trend"], title="Trend (Count vs. lineaire regressie)")
+        st.plotly_chart(fig2, use_container_width=True)
 
-    trend_data["Trend"] = trend_line
-    fig2 = px.line(trend_data, x="Month", y=["Count", "Trend"], title="Trend (Count vs. lineaire regressie)")
-    st.plotly_chart(fig2, use_container_width=True)
-
-    slope = float(model.coef_[0])
-    direction = "stijgend" if slope > 0 else "dalend"
-    st.info(f"Trend is **{direction}** (helling ≈ **{slope:.2f}** documenten per maand-index).")
+        slope = float(model.coef_[0])
+        direction = "stijgend" if slope > 0 else "dalend"
+        st.info(f"Trend is **{direction}** (helling ≈ **{slope:.2f}** documenten per maand-index).")
 
 st.divider()
 st.subheader("Verdeling documenttypes")
@@ -306,5 +353,20 @@ if "Soort" in results.columns:
     st.plotly_chart(fig3, use_container_width=True)
 else:
     st.info("Kolom 'Soort' is niet aanwezig in de dataset.")
+
+
+# -----------------------------
+# About / Methodology
+# -----------------------------
+with st.expander("Over deze tool", expanded=False):
+    st.markdown(
+        """
+**Data:** Tweede Kamer OData API (download resource per document)  
+**Update:** Dagelijks via GitHub Actions  
+**Zoeken:** Full-row text match + AND/OR/NOT + facets  
+**Topics:** TF-IDF + KMeans clustering (keywords per topic)  
+**Auteur:** Jason Stuve  
+"""
+    )
 
 # klaargemaakt voor gebruik door Jason Stuve op maandag 12 januari 2026
