@@ -11,9 +11,9 @@ import streamlit as st
 from sklearn.linear_model import LinearRegression
 
 # Functies ophalen van /functions
-from functions.ui_results_downloads import render_results_with_downloads
 from functions.ui_filters import render_filters_ui, apply_facet_filters
 from functions.ui_topics import compute_topics, render_topic_cards
+from functions.ui_master_detail import render_master_detail
 
 
 DOCS_PATH = "data/documents.parquet"
@@ -240,15 +240,22 @@ else:
     results = results_with_topics
 
 
-# ---- Results + Downloads geïntegreerd ----
-st.subheader("Search Results (gegroepeerd per dossier + downloads)")
-
+# ---- UX Upgrade: Master–Detail resultaten ----
+st.divider()
 docs = results_df_to_docs(results)
-render_results_with_downloads(docs)
+
+render_master_detail(
+    docs,
+    title="Search Results (Master–Detail)",
+)
 
 # ---- Optional: dataset tabel nog steeds beschikbaar voor debug ----
 with st.expander("Ruwe resultaten (DataFrame)", expanded=False):
     st.dataframe(results, use_container_width=True)
+
+with st.expander("Downloadlijst per dossier (oude view)", expanded=False):
+    render_results_with_downloads(docs)
+
 
 # ---- Analytics ----
 st.divider()
