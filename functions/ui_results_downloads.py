@@ -1,13 +1,12 @@
-# app/ui_results_downloads.py
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import streamlit as st
 
-from app.utils_downloads import build_zip, fetch_bytes
-from app.utils_filenames import make_unique_filename
+from functions.utils_downloads import build_zip, fetch_bytes
+from functions.utils_filenames import make_unique_filename
 
 
 def group_by_dossier(results: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -22,7 +21,7 @@ def render_results_with_downloads(results: List[Dict[str, Any]]) -> None:
     """
     - Groepeert zoekresultaten per dossier
     - Toont per document: unieke naam + metadata + download knop
-    - Optioneel: selecteer meerdere docs -> zip per dossier
+    - Optioneel: selecteer meerdere docs -> ZIP per dossier
     """
     if not results:
         st.info("Geen resultaten. Pas je zoekopdracht/filters aan.")
@@ -32,12 +31,10 @@ def render_results_with_downloads(results: List[Dict[str, Any]]) -> None:
 
     st.caption(f"Gevonden documenten: **{len(results)}** · Dossiers: **{len(groups)}**")
 
-    # Zorg dat selectie persistent is
     if "selected_doc_ids" not in st.session_state:
         st.session_state.selected_doc_ids = set()
 
     for dossier_id, docs in groups.items():
-        # Sort op datum (nieuwste boven)
         docs_sorted = sorted(
             docs,
             key=lambda d: str(d.get("date") or d.get("datum") or d.get("publication_date") or ""),
@@ -50,27 +47,22 @@ def render_results_with_downloads(results: List[Dict[str, Any]]) -> None:
             header += f" — {dossier_title}"
 
         with st.expander(f"{header}  ·  {len(docs_sorted)} documenten", expanded=False):
-            # Dossier-level download geselecteerd (ZIP)
             colA, colB, colC = st.columns([1, 1, 2])
             with colA:
-                st.write("")
                 st.write("**Selectie**")
             with colB:
-                select_all = st.button("Selecteer alles", key=f"sel_all_{dossier_id}")
-                if select_all:
+                if st.button("Selecteer alles", key=f"sel_all_{dossier_id}"):
                     for d in docs_sorted:
-                        st.session_state.selected_doc_ids.add(str(d.get("doc_id") or d.get("id") or d.get("document_id")))
+                        did = str(d.get("doc_id") or d.get("id") or d.get("document_id"))
+                        st.session_state.selected_doc_ids.add(did)
             with colC:
-                clear_all = st.button("Selectie wissen", key=f"clr_all_{dossier_id}")
-                if clear_all:
+                if st.button("Selectie wissen", key=f"clr_all_{dossier_id}"):
                     for d in docs_sorted:
-                        doc_id = str(d.get("doc_id") or d.get("id") or d.get("document_id"))
-                        if doc_id in st.session_state.selected_doc_ids:
-                            st.session_state.selected_doc_ids.remove(doc_id)
+                        did = str(d.get("doc_id") or d.get("id") or d.get("document_id"))
+                        st.session_state.selected_doc_ids.discard(did)
 
             st.divider()
 
-            # Documentenlijst
             for d in docs_sorted:
                 doc_id = str(d.get("doc_id") or d.get("id") or d.get("document_id") or "")
                 title = d.get("title") or d.get("naam") or "Onbekende titel"
@@ -102,7 +94,6 @@ def render_results_with_downloads(results: List[Dict[str, Any]]) -> None:
                     st.code(unique_name, language="text")
 
                 with row3:
-                    # Direct download knop
                     if download_url:
                         try:
                             data = fetch_bytes(download_url)
@@ -110,28 +101,27 @@ def render_results_with_downloads(results: List[Dict[str, Any]]) -> None:
                                 label="Download",
                                 data=data,
                                 file_name=unique_name,
-                                mime=None,  # laat browser bepalen
                                 key=f"dl_{dossier_id}_{doc_id}",
                                 use_container_width=True,
                             )
-                        except Exception as e:
+                        except Exception:
                             st.warning("Download niet beschikbaar")
                     else:
                         st.caption("Geen download URL")
 
                 st.divider()
 
-            # ZIP download van geselecteerde docs (in dit dossier)
             selected_docs = []
             for d in docs_sorted:
-                doc_id = str(d.get("doc_id") or d.get("id") or d.get("document_id") or "")
-                if doc_id in st.session_state.selected_doc_ids:
+                did = str(d.get("doc_id") or d.get("id") or d.get("document_id") or "")
+                if did in st.session_state.selected_doc_ids:
                     selected_docs.append(d)
 
             if selected_docs:
                 st.subheader("Download selectie als ZIP")
                 zip_files = []
                 errors = 0
+
                 for d in selected_docs:
                     url = d.get("download_url") or d.get("url") or d.get("source_url") or ""
                     if not url:
@@ -153,5 +143,6 @@ def render_results_with_downloads(results: List[Dict[str, Any]]) -> None:
                         key=f"zip_{dossier_id}",
                         use_container_width=True,
                     )
+
                 if errors:
                     st.caption(f"Let op: {errors} geselecteerde items konden niet worden gedownload.")
