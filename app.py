@@ -13,6 +13,8 @@ from sklearn.linear_model import LinearRegression
 # Functies ophalen van /functions
 from functions.ui_results_downloads import render_results_with_downloads
 from functions.ui_filters import render_filters_ui, apply_facet_filters
+from functions.ui_topics import compute_topics, render_topic_cards
+
 
 DOCS_PATH = "data/documents.parquet"
 META_PATH = "data/metadata.json"
@@ -219,6 +221,24 @@ st.success(f"Klaar! {len(results):,} resultaten gevonden.")
 if len(results) == 0:
     st.info("Geen resultaten. Probeer een andere term, of gebruik OR i.p.v. AND.")
     st.stop()
+
+# ---- Topics (clustering) ----
+st.divider()
+
+# Bereken topics op basis van de huidige zoekresultaten
+results_with_topics, topics = compute_topics(results)
+
+# Render cards en lees selectie
+selected_topic_id = render_topic_cards(topics)
+
+# Filter resultaten als er een topic gekozen is
+if selected_topic_id is not None:
+    results = results_with_topics[results_with_topics["topic_id"] == selected_topic_id].copy()
+    st.success(f"Topic-filter actief: {len(results):,} documenten in dit topic.")
+else:
+    # geen filter -> gebruik originele results
+    results = results_with_topics
+
 
 # ---- Results + Downloads geïntegreerd ----
 st.subheader("Search Results (gegroepeerd per dossier + downloads)")
