@@ -90,7 +90,7 @@ def compute_topics(df: pd.DataFrame, k: Optional[int] = None, random_state: int 
         max_features=6000,
         ngram_range=(1, 2),
         min_df=2,
-        stop_words="dutch",
+        stop_words=None,
     )
     X = vectorizer.fit_transform(text)
 
