@@ -1,4 +1,13 @@
 # app.py
+# ---------------------------------------------
+# Tweede Kamer Analyse Tool — UI/UX refresh
+# - Filters in een vaste linkerkolom (geen sidebar)
+# - Duidelijke secties + cards/containers
+# - Expliciete AND/OR keuze, NOT apart
+# - Eén duidelijke actieknop + reset knoppen
+# - Rustige empty-state op main
+# ---------------------------------------------
+
 # ---- imports ----
 import json
 import os
@@ -21,14 +30,44 @@ META_PATH = "data/metadata.json"
 
 BASE_URL = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Document({})/resource"
 
-st.set_page_config(layout="wide")
+# -----------------------------
+# Page config + light styling
+# -----------------------------
+st.set_page_config(layout="wide", page_title="Tweede Kamer Analyse Tool")
+
+st.markdown(
+    """
+<style>
+/* iets meer ademruimte bovenaan */
+.block-container { padding-top: 1.2rem; }
+
+/* cards iets strakker */
+[data-testid="stVerticalBlockBorderWrapper"]{
+  border-radius: 12px;
+}
+
+/* buttons net iets robuuster */
+.stButton > button {
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+}
+
+/* compacte captions */
+.small-muted { color: rgba(49, 51, 63, 0.65); font-size: 0.9rem; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# -----------------------------
+# Header
+# -----------------------------
 st.title("De Tweede Kamer Analyse Tool")
 st.write(
     "Deze tool maakt openbare Tweede Kamer-stukken overzichtelijk en doorzoekbaar. "
-    "Gebouwd door Jason Stuve. Mochten er vragen of opmerkingen zijn, neem gerust contact op via Linkedin: "
+    "Gebouwd door Jason Stuve. Vragen/opmerkingen? Neem contact op via LinkedIn: "
     "https://www.linkedin.com/in/jkpstuve/"
 )
-
 
 # -----------------------------
 # Helpers
@@ -186,187 +225,246 @@ st.caption(f"Laatst bijgewerkt (UTC): {meta.get('updated_utc')} | Aantal rijen: 
 with st.expander("Dataset preview", expanded=False):
     st.dataframe(df.head(200), use_container_width=True)
 
+# -----------------------------
+# Layout: Filterkolom + Main
+# -----------------------------
+filter_col, main_col = st.columns([1.1, 3.9], gap="large")
+
+# We bewaren resultaten in session_state zodat de UI niet "leeg" voelt na interacties.
+if "last_results" not in st.session_state:
+    st.session_state["last_results"] = None
+if "last_results_with_topics" not in st.session_state:
+    st.session_state["last_results_with_topics"] = None
+if "last_topics" not in st.session_state:
+    st.session_state["last_topics"] = None
+if "last_runtime_s" not in st.session_state:
+    st.session_state["last_runtime_s"] = None
 
 # -----------------------------
-# Sidebar: filters + search
+# Filters UI (left column)
 # -----------------------------
-with st.sidebar:
-    st.header("Zoeken & Filters")
+with filter_col:
+    st.markdown("## 🔍 Zoeken & Filters")
 
-    with st.form("search_form", clear_on_submit=False):
+    # Card: Zoekinput + facet filters (we hergebruiken jouw bestaande render_filters_ui)
+    with st.container(border=True):
+        st.markdown("### Zoeken")
+        st.markdown('<div class="small-muted">AND = specifieker · OR = breder · NOT = uitsluiten</div>', unsafe_allow_html=True)
+
+        # render_filters_ui verwacht df en levert spec met include_terms/include_logic/exclude_terms en facets
+        # Let op: als render_filters_ui zelf labels toont als "AND/OR/NOT", is dat oké.
         spec = render_filters_ui(df)
 
-        st.caption("Tip: AND = specifieker, OR = breder, NOT = ruis eruit.")
+    with st.container(border=True):
+        st.markdown("### Uitvoering")
         chunk_size = st.slider(
             "Zoeksnelheid (chunk size)",
             min_value=2000,
             max_value=20000,
             value=5000,
             step=1000,
+            help="Groter = sneller, maar kan zwaarder zijn voor je machine/browser.",
         )
 
-        submitted = st.form_submit_button("Zoeken", use_container_width=True)
+        run_search = st.button("🔎 Zoeken", use_container_width=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Reset topic", use_container_width=True):
-            st.session_state["topic_filter"] = None
-            st.rerun()
-    with c2:
-        if st.button("Reset alles", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Reset topic", use_container_width=True):
+                st.session_state["topic_filter"] = None
+                # laat vorige resultaten staan; alleen topic resetten
+                st.rerun()
+        with c2:
+            if st.button("Reset alles", use_container_width=True):
+                st.session_state.clear()
+                st.rerun()
 
-    st.divider()
-    st.caption("💡 Deelbaar maken? Volgende stap is query params in URL.")
-
-
-# -----------------------------
-# Main: if no search submitted
-# -----------------------------
-if not submitted:
-    st.info("Stel je filters links in en klik op **Zoeken**.")
-    st.stop()
-
-if not has_any_filters(spec):
-    st.warning("Je hebt nog geen zoekterm of filters ingevuld.")
-    st.stop()
-
+    st.caption("💡 Volgende stap: filters deelbaar maken via URL query parameters.")
 
 # -----------------------------
-# Execute search
+# Main column: empty state / results
 # -----------------------------
-t0 = time.time()
-with st.spinner("Bezig met zoeken… even geduld"):
-    # 1) facet filters
-    df_prefiltered = apply_facet_filters(df, spec)
+with main_col:
+    # Header card (maakt main minder "leeg")
+    with st.container(border=True):
+        st.markdown("### Overzicht")
+        left_a, left_b, left_c = st.columns(3)
+        left_a.metric("Dataset (rijen)", f"{len(df):,}")
+        left_b.metric("Laatst bijgewerkt (UTC)", meta.get("updated_utc") or "-")
+        if st.session_state["last_results"] is None:
+            left_c.metric("Resultaten", "-")
+        else:
+            left_c.metric("Resultaten", f"{len(st.session_state['last_results']):,}")
 
-    st.caption(
-        f"Zoeken in {len(df_prefiltered):,} documenten "
-        f"(na facet filters; totaal was {len(df):,})."
-    )
+    # Empty state: als nog nooit gezocht
+    if not run_search and st.session_state["last_results"] is None:
+        st.info("👈 Stel links je filters in en klik op **Zoeken**.")
+        st.stop()
 
-    # 2) text search
-    results = perform_search_with_progress(
-        df_prefiltered,
-        include_terms=spec.include_terms,
-        include_logic=spec.include_logic,
-        exclude_terms=spec.exclude_terms,
-        chunk_size=int(chunk_size),
-    )
+    # Als user klikt op zoeken: valideer
+    if run_search:
+        if not has_any_filters(spec):
+            st.warning("Je hebt nog geen zoekterm of filters ingevuld.")
+            st.stop()
 
-dt = time.time() - t0
-st.success(f"Klaar! {len(results):,} resultaten gevonden in {dt:.1f}s.")
+        # -----------------------------
+        # Execute search
+        # -----------------------------
+        t0 = time.time()
+        with st.spinner("Bezig met zoeken… even geduld"):
+            # 1) facet filters
+            df_prefiltered = apply_facet_filters(df, spec)
 
-if len(results) == 0:
-    st.warning("Geen resultaten gevonden.")
-    st.markdown(
-        """
+            st.caption(
+                f"Zoeken in {len(df_prefiltered):,} documenten "
+                f"(na facet filters; totaal was {len(df):,})."
+            )
+
+            # 2) text search
+            results = perform_search_with_progress(
+                df_prefiltered,
+                include_terms=spec.include_terms,
+                include_logic=spec.include_logic,
+                exclude_terms=spec.exclude_terms,
+                chunk_size=int(chunk_size),
+            )
+
+        dt = time.time() - t0
+
+        st.session_state["last_results"] = results
+        st.session_state["last_runtime_s"] = dt
+
+        # Precompute topics meteen (zodat filtering snel voelt)
+        if len(results) > 0:
+            results_with_topics, topics = compute_topics(results)
+            st.session_state["last_results_with_topics"] = results_with_topics
+            st.session_state["last_topics"] = topics
+        else:
+            st.session_state["last_results_with_topics"] = None
+            st.session_state["last_topics"] = None
+
+    # Gebruik altijd de laatste resultaten (zodat UI niet springt)
+    results = st.session_state["last_results"]
+    runtime_s = st.session_state["last_runtime_s"]
+
+    if results is None:
+        st.info("👈 Stel links je filters in en klik op **Zoeken**.")
+        st.stop()
+
+    # Status
+    if len(results) == 0:
+        st.warning("Geen resultaten gevonden.")
+        st.markdown(
+            """
 **Suggesties:**
 - Gebruik **OR** in plaats van **AND**
 - Verwijder één of meer **NOT-termen**
 - Probeer een **algemener** zoekwoord
 """
-    )
-    st.stop()
+        )
+        st.stop()
 
+    st.success(f"Klaar! {len(results):,} resultaten gevonden" + (f" in {runtime_s:.1f}s." if runtime_s else "."))
 
-# -----------------------------
-# Topics (clustering)
-# -----------------------------
-st.divider()
-st.subheader("Topics (clustering)")
-st.caption("Klik op een topic om de resultaten te filteren.")
+    # -----------------------------
+    # Topics (clustering)
+    # -----------------------------
+    st.divider()
+    st.subheader("Topics (clustering)")
+    st.caption("Klik op een topic om de resultaten te filteren.")
 
-results_with_topics, topics = compute_topics(results)
-selected_topic_id = render_topic_cards(topics)
+    results_with_topics = st.session_state["last_results_with_topics"]
+    topics = st.session_state["last_topics"]
 
-if selected_topic_id is not None:
-    results = results_with_topics[results_with_topics["topic_id"] == selected_topic_id].copy()
-    st.info(f"Topic-filter actief: **{len(results):,}** documenten.")
-else:
-    results = results_with_topics
+    if results_with_topics is None or topics is None:
+        # fallback
+        results_with_topics, topics = compute_topics(results)
 
+    selected_topic_id = render_topic_cards(topics)
 
-# -----------------------------
-# Results: Master–Detail
-# -----------------------------
-st.divider()
-docs = results_df_to_docs(results)
-render_master_detail(docs, title="Resultaten")
+    if selected_topic_id is not None:
+        filtered = results_with_topics[results_with_topics["topic_id"] == selected_topic_id].copy()
+        st.info(f"Topic-filter actief: **{len(filtered):,}** documenten.")
+        results_to_show = filtered
+    else:
+        results_to_show = results_with_topics
 
+    # -----------------------------
+    # Results: Master–Detail
+    # -----------------------------
+    st.divider()
+    docs = results_df_to_docs(results_to_show)
+    render_master_detail(docs, title="Resultaten")
 
-# -----------------------------
-# Debug dataframe
-# -----------------------------
-with st.expander("Ruwe resultaten (DataFrame)", expanded=False):
-    st.dataframe(results, use_container_width=True)
+    # -----------------------------
+    # Debug dataframe
+    # -----------------------------
+    with st.expander("Ruwe resultaten (DataFrame)", expanded=False):
+        st.dataframe(results_to_show, use_container_width=True)
 
+    # -----------------------------
+    # Analytics
+    # -----------------------------
+    st.divider()
+    st.subheader("Analyse")
 
-# -----------------------------
-# Analytics
-# -----------------------------
-st.divider()
-st.subheader("Analyse")
+    tmp = results_to_show.copy()
+    if "DatumRegistratie" in tmp.columns:
+        tmp["DatumRegistratie"] = pd.to_datetime(tmp["DatumRegistratie"], errors="coerce", utc=True)
+        tmp = tmp.dropna(subset=["DatumRegistratie"])
+    else:
+        tmp = pd.DataFrame()
 
-tmp = results.copy()
-if "DatumRegistratie" in tmp.columns:
-    tmp["DatumRegistratie"] = pd.to_datetime(tmp["DatumRegistratie"], errors="coerce", utc=True)
-    tmp = tmp.dropna(subset=["DatumRegistratie"])
-else:
-    tmp = pd.DataFrame()
+    if tmp.empty:
+        st.info("Geen (bruikbare) DatumRegistratie-waarden gevonden voor trendanalyse.")
+    else:
+        st.markdown("#### Time Trend per Month")
+        tmp["Month"] = tmp["DatumRegistratie"].dt.to_period("M").dt.to_timestamp()
+        trend_data = tmp.groupby("Month").size().reset_index(name="Count").sort_values("Month")
 
-if tmp.empty:
-    st.info("Geen (bruikbare) DatumRegistratie-waarden gevonden voor trendanalyse.")
-else:
-    st.markdown("#### Time Trend per Month")
-    tmp["Month"] = tmp["DatumRegistratie"].dt.to_period("M").dt.to_timestamp()
-    trend_data = tmp.groupby("Month").size().reset_index(name="Count").sort_values("Month")
+        fig = px.line(trend_data, x="Month", y="Count", title="Aantal documenten per maand")
+        st.plotly_chart(fig, use_container_width=True)
 
-    fig = px.line(trend_data, x="Month", y="Count", title="Aantal documenten per maand")
-    st.plotly_chart(fig, use_container_width=True)
+        # Lineaire regressie trendline
+        if len(trend_data) >= 2:
+            X = np.arange(len(trend_data)).reshape(-1, 1)
+            y = trend_data["Count"].values
+            model = LinearRegression().fit(X, y)
+            trend_line = model.predict(X)
 
-    # Lineaire regressie trendline
-    if len(trend_data) >= 2:
-        X = np.arange(len(trend_data)).reshape(-1, 1)
-        y = trend_data["Count"].values
-        model = LinearRegression().fit(X, y)
-        trend_line = model.predict(X)
+            trend_data["Trend"] = trend_line
+            fig2 = px.line(trend_data, x="Month", y=["Count", "Trend"], title="Trend (Count vs. lineaire regressie)")
+            st.plotly_chart(fig2, use_container_width=True)
 
-        trend_data["Trend"] = trend_line
-        fig2 = px.line(trend_data, x="Month", y=["Count", "Trend"], title="Trend (Count vs. lineaire regressie)")
-        st.plotly_chart(fig2, use_container_width=True)
+            slope = float(model.coef_[0])
+            direction = "stijgend" if slope > 0 else "dalend"
+            st.info(f"Trend is **{direction}** (helling ≈ **{slope:.2f}** documenten per maand-index).")
 
-        slope = float(model.coef_[0])
-        direction = "stijgend" if slope > 0 else "dalend"
-        st.info(f"Trend is **{direction}** (helling ≈ **{slope:.2f}** documenten per maand-index).")
+    st.divider()
+    st.subheader("Verdeling documenttypes")
 
-st.divider()
-st.subheader("Verdeling documenttypes")
+    if "Soort" in results_to_show.columns:
+        breakdown = results_to_show["Soort"].fillna("Onbekend").value_counts().reset_index()
+        breakdown.columns = ["Document Type", "Count"]
+        st.dataframe(breakdown, use_container_width=True)
 
-if "Soort" in results.columns:
-    breakdown = results["Soort"].fillna("Onbekend").value_counts().reset_index()
-    breakdown.columns = ["Document Type", "Count"]
-    st.dataframe(breakdown, use_container_width=True)
+        fig3 = px.pie(breakdown, values="Count", names="Document Type", title="Verdeling documenttypes")
+        st.plotly_chart(fig3, use_container_width=True)
+    else:
+        st.info("Kolom 'Soort' is niet aanwezig in de dataset.")
 
-    fig3 = px.pie(breakdown, values="Count", names="Document Type", title="Verdeling documenttypes")
-    st.plotly_chart(fig3, use_container_width=True)
-else:
-    st.info("Kolom 'Soort' is niet aanwezig in de dataset.")
-
-
-# -----------------------------
-# About / Methodology
-# -----------------------------
-with st.expander("Over deze tool", expanded=False):
-    st.markdown(
-        """
+    # -----------------------------
+    # About / Methodology
+    # -----------------------------
+    with st.expander("Over deze tool", expanded=False):
+        st.markdown(
+            """
 **Data:** Tweede Kamer OData API (download resource per document)  
 **Update:** Dagelijks via GitHub Actions  
 **Zoeken:** Full-row text match + AND/OR/NOT + facets  
 **Topics:** TF-IDF + KMeans clustering (keywords per topic)  
 **Auteur:** Jason Stuve  
 """
-    )
+        )
 
 # klaargemaakt voor gebruik door Jason Stuve op maandag 12 januari 2026
