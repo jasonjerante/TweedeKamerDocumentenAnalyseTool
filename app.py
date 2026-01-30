@@ -1,12 +1,17 @@
+# app.py
 # ---- imports ----
 import json
 import os
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 from sklearn.linear_model import LinearRegression
+
+# NEW: UI + download helpers (from /functions)
+from functions.ui_results_downloads import render_results_with_downloads
 
 DOCS_PATH = "data/documents.parquet"
 META_PATH = "data/metadata.json"
@@ -15,7 +20,11 @@ BASE_URL = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0/Document({})/re
 
 st.set_page_config(layout="wide")
 st.title("De Tweede Kamer Analyse Tool")
-st.write("Deze tool maakt openbare Tweede Kamer-stukken overzichtelijk en doorzoekbaar. Gebouwd door Jason Stuve. Mochten er vragen of opmerkingen zijn, neem gerust contact op via Linkedin: https://www.linkedin.com/in/jkpstuve/")
+st.write(
+    "Deze tool maakt openbare Tweede Kamer-stukken overzichtelijk en doorzoekbaar. "
+    "Gebouwd door Jason Stuve. Mochten er vragen of opmerkingen zijn, neem gerust contact op via Linkedin: "
+    "https://www.linkedin.com/in/jkpstuve/"
+)
 
 
 def load_meta() -> dict:
@@ -29,6 +38,7 @@ def load_meta() -> dict:
 def load_data() -> pd.DataFrame:
     if not os.path.exists(DOCS_PATH):
         return pd.DataFrame()
+
     df = pd.read_parquet(DOCS_PATH)
 
     # Zorg dat DatumRegistratie netjes is (kan al datetime zijn)
@@ -83,6 +93,73 @@ def perform_search_with_progress(
     return pd.DataFrame()
 
 
+def results_df_to_docs(results: pd.DataFrame) -> List[Dict[str, Any]]:
+    """
+    Zet jouw results DataFrame om naar list[dict] met keys die de download UI verwacht.
+    Aliases in functions zijn al ingebouwd, maar we mappen hier expliciet naar een stabiele structuur.
+
+    Verwachte keys in UI:
+      dossier_id, doc_id, title, date, doctype, download_url, file_ext
+    """
+    docs: List[Dict[str, Any]] = []
+
+    # Handige kolomaliases (pas je dataset kolomnamen hierop aan als ze anders heten)
+    col_doc_id = "Id" if "Id" in results.columns else None
+    col_title = "Onderwerp" if "Onderwerp" in results.columns else ("Titel" if "Titel" in results.columns else None)
+    col_date = "DatumRegistratie" if "DatumRegistratie" in results.columns else None
+    col_type = "Soort" if "Soort" in results.columns else None
+
+    # Dossiernummer: in sommige exports heet dit anders. We proberen een paar veelvoorkomende opties.
+    dossier_candidates = [
+        "Dossiernummer",
+        "DossierNummer",
+        "Dossier",
+        "Zaaknummer",
+        "ZaakNummer",
+    ]
+    col_dossier = next((c for c in dossier_candidates if c in results.columns), None)
+
+    for _, row in results.iterrows():
+        doc_id = str(row.get(col_doc_id)) if col_doc_id else ""
+        if not doc_id or doc_id == "nan":
+            continue
+
+        title = (row.get(col_title) if col_title else None) or "Document"
+        doctype = (row.get(col_type) if col_type else None) or ""
+        dossier_id = (row.get(col_dossier) if col_dossier else None) or "unknown-dossier"
+
+        # Datum (string of datetime)
+        date_val = row.get(col_date) if col_date else None
+        if pd.notna(date_val):
+            try:
+                date_val = pd.to_datetime(date_val, errors="coerce", utc=True)
+                if pd.isna(date_val):
+                    date_val = None
+                else:
+                    # UI verwacht YYYY-MM-DD string of datetime; beide ok
+                    date_val = date_val.date().isoformat()
+            except Exception:
+                date_val = None
+        else:
+            date_val = None
+
+        download_url = BASE_URL.format(doc_id)
+
+        docs.append(
+            {
+                "dossier_id": str(dossier_id),
+                "doc_id": doc_id,
+                "title": str(title),
+                "date": date_val,
+                "doctype": str(doctype),
+                "download_url": download_url,
+                "file_ext": "pdf",  # BASE_URL levert doorgaans binary/pdf; bij twijfel laat je dit weg
+            }
+        )
+
+    return docs
+
+
 # ---- Load dataset ----
 meta = load_meta()
 df = load_data()
@@ -100,7 +177,7 @@ with st.expander("Dataset preview", expanded=False):
 st.divider()
 st.subheader("Zoeken")
 
-# Gebruik een form zodat de app niet bij elke toetsaanslag opnieuw gaat zoeken. Merkte dat dit ervoor zorgt dat het veel sneller gaat werken.
+# Gebruik een form zodat de app niet bij elke toetsaanslag opnieuw gaat zoeken.
 with st.form("search_form", clear_on_submit=False):
     search_mode = st.radio("Kies de zoekmodus:", ("Een item", "Meerdere items"), horizontal=True)
 
@@ -126,7 +203,6 @@ with st.form("search_form", clear_on_submit=False):
         if t2.strip():
             terms.append(t2.strip())
 
-    # UX: extra instellingen voor gebruikers (geen idee of dit nu nodig is maar wellicht handig om alvast erin gebouwd te hebben voor latere uitbreidingen)
     st.caption("Tip: gebruik meerdere zoektermen met AND om specifieker te zoeken.")
     chunk_size = st.slider("Zoeksnelheid (chunk size)", min_value=2000, max_value=20000, value=5000, step=1000)
 
@@ -146,12 +222,23 @@ with st.spinner("Bezig met zoeken… even geduld"):
     results = perform_search_with_progress(df, terms, logic, chunk_size=int(chunk_size))
 
 st.success(f"Klaar! {len(results):,} resultaten gevonden.")
-st.subheader("Search Results")
-st.dataframe(results, use_container_width=True)
 
 if len(results) == 0:
     st.info("Geen resultaten. Probeer een andere term, of gebruik OR i.p.v. AND.")
     st.stop()
+
+# ---- NEW: Results + Downloads geïntegreerd ----
+st.subheader("Search Results (gegroepeerd per dossier + downloads)")
+
+docs = results_df_to_docs(results)
+
+# Als je dataset geen dossiernummerkolom heeft, werkt het nog steeds,
+# maar je krijgt alles onder "unknown-dossier". In dat geval: voeg dossier mapping toe.
+render_results_with_downloads(docs)
+
+# ---- Optional: dataset tabel nog steeds beschikbaar voor debug ----
+with st.expander("Ruwe resultaten (DataFrame)", expanded=False):
+    st.dataframe(results, use_container_width=True)
 
 # ---- Analytics ----
 st.divider()
@@ -198,24 +285,5 @@ if "Soort" in results.columns:
     st.plotly_chart(fig3, use_container_width=True)
 else:
     st.info("Kolom 'Soort' is niet aanwezig in de dataset.")
-
-st.divider()
-st.subheader("Document download links")
-
-max_links = 50
-st.caption(f"Toont maximaal {max_links} links (om de pagina snel te houden).")
-
-shown = 0
-for _, row in results.iterrows():
-    if shown >= max_links:
-        break
-
-    doc_id = row.get("Id")
-    onderwerp = row.get("Onderwerp") or row.get("Titel") or "Document"
-
-    if pd.notna(doc_id):
-        link = BASE_URL.format(doc_id)
-        st.markdown(f"- [{onderwerp}]({link})")
-        shown += 1
 
 # klaargemaakt voor gebruik door Jason Stuve op maandag 12 januari 2026
